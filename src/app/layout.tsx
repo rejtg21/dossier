@@ -57,7 +57,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </body>
       </html>
       <SpeedInsights />
-      <Analytics
+      <Analytics />
     </>
   );
 }
