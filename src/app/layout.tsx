@@ -39,7 +39,6 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <>
-      <SpeedInsights />
       <html
         lang="en"
         className={`${spaceGrotesk.variable} ${workSans.variable} ${ibmPlexMono.variable} antialiased`}
@@ -56,6 +55,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <SiteFooter />
         </body>
       </html>
+      <SpeedInsights />
     </>
   );
 }
