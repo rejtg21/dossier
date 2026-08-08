@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, Space_Grotesk, Work_Sans } from "next/font/google";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteNav } from "@/components/site-nav";
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from "@vercel/analytics/next"
 
 import "./globals.css";
 
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </body>
       </html>
       <SpeedInsights />
+      <Analytics
     </>
   );
 }
