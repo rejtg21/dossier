@@ -2,10 +2,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerCatchContacts, resetCatchContacts } from "./_catch-contacts";
-import { removeFailure, saveFailure } from "./_contacts-store";
-import { emit, resetListeners } from "./_events";
+import { removeFailure, saveFailure } from "../services/_contacts-store";
+import { emit, resetListeners } from "../services/_events";
 
-vi.mock("./_contacts-store", () => ({
+vi.mock("../services/_contacts-store", () => ({
   saveFailure: vi.fn(),
   removeFailure: vi.fn(),
 }));

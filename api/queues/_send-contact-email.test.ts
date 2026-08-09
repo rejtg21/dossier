@@ -1,16 +1,16 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { removeFailure, saveFailure } from "./_contacts-store";
-import { sendEmail } from "./_send-email";
+import { removeFailure, saveFailure } from "../services/_contacts-store";
+import { sendEmail } from "../services/_send-email";
 import { deliverContactEmail, retry } from "./send-contact-email";
 
 // handleCallback would try to configure a queue client at import time.
 vi.mock("@vercel/queue", () => ({ handleCallback: (fn: unknown) => fn }));
-vi.mock("./_send-email", () => ({ sendEmail: vi.fn() }));
+vi.mock("../services/_send-email", () => ({ sendEmail: vi.fn() }));
 // The event bus and catch-contacts listener stay real, so these cases cover
 // the whole emit -> listener -> store path.
-vi.mock("./_contacts-store", () => ({
+vi.mock("../services/_contacts-store", () => ({
   saveFailure: vi.fn(),
   removeFailure: vi.fn(),
 }));

@@ -1,5 +1,5 @@
-import { removeFailure, saveFailure } from "./_contacts-store";
-import { on } from "./_events";
+import { removeFailure, saveFailure } from "../services/_contacts-store";
+import { on } from "../services/_events";
 
 /**
  * The `catch-contacts` listener: the only thing in the codebase that decides a

@@ -1,16 +1,25 @@
 import { handleCallback } from "@vercel/queue";
-import { registerCatchContacts } from "./_catch-contacts";
-import { emit, type ContactSubmission, type EventName } from "./_events";
-import { sendEmail } from "./_send-email";
+import { registerCatchContacts } from "../listeners/_catch-contacts";
+import { emit, type ContactSubmission, type EventName } from "../services/_events";
+import { sendEmail } from "../services/_send-email";
 
 /**
  * Consumes the `contact-messages` topic and does the actual SMTP send.
  *
- * Private by construction: the `experimentalTriggers` entry in `vercel.json`
- * binds this file to the topic and removes its public URL, so only Vercel's
- * queue infrastructure can invoke it. It has no `_` prefix precisely because it
- * must remain a function — the trigger is what makes it unreachable, not the
- * filename.
+ * There is no subscribe call or polling loop here, because consumption is
+ * push-based. The `experimentalTriggers` entry in `vercel.json` binds this file
+ * to the topic; when a message is ready, Vercel's queue infrastructure makes an
+ * HTTP POST to this function. `handleCallback` is the receiving end: it decodes
+ * the message and its metadata, calls the handler below, and translates the
+ * outcome back — resolve acknowledges, throw redelivers.
+ *
+ * So the export that subscribes is `POST` at the bottom of this file, and the
+ * thing doing the listening is Vercel, not this process. (Poll mode exists as
+ * an alternative, via PollingQueueClient, for workers running off-platform.)
+ *
+ * The trigger also removes this route's public URL, so only the queue can
+ * invoke it. It has no `_` prefix precisely because it must remain a function —
+ * the trigger is what makes it unreachable, not the filename.
  *
  * Throwing is the retry signal: the SDK acknowledges a message when the handler
  * resolves and redelivers it when the handler throws. `sendEmail` never throws,
