@@ -1,7 +1,23 @@
 import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
 import type { ContactSubmission } from "./_events";
 
-export const CONTACTS_PATHNAME = "contacts.json";
+const DEFAULT_PATHNAME = "contacts.json";
+
+/**
+ * Where the archive lives, overridable with `CONTACTS_BLOB_PATHNAME`.
+ *
+ * Note that this is not what keeps the file unreadable — `access: 'private'`
+ * is. A private blob needs an authenticated request whatever it is called, so
+ * guessing the name gets you nothing.
+ *
+ * What it does buy is separation: point preview and production at different
+ * pathnames and a preview deploy can never write into the real archive.
+ *
+ * Read per call rather than captured at import, so a test or a warm instance
+ * always sees the current value.
+ */
+export const contactsPathname = (): string =>
+  process.env.CONTACTS_BLOB_PATHNAME?.trim() || DEFAULT_PATHNAME;
 
 /**
  * How many times to redo the read-modify-write when another invocation wrote
@@ -26,7 +42,8 @@ interface Snapshot {
 }
 
 async function read(): Promise<Snapshot> {
-  const result = await get(CONTACTS_PATHNAME, { access: "private" });
+  const pathname = contactsPathname();
+  const result = await get(pathname, { access: "private" });
 
   // `get` resolves to null rather than throwing when the blob is absent, which
   // is the first-write case: there is nothing to merge into.
@@ -41,13 +58,13 @@ async function read(): Promise<Snapshot> {
     // Refuse rather than start fresh: overwriting an unreadable file would
     // destroy every submission it still holds.
     throw new Error(
-      `[contacts] ${CONTACTS_PATHNAME} is not valid JSON; refusing to overwrite it`,
+      `[contacts] ${pathname} is not valid JSON; refusing to overwrite it`,
     );
   }
 
   if (!Array.isArray(parsed)) {
     throw new Error(
-      `[contacts] ${CONTACTS_PATHNAME} is not an array; refusing to overwrite it`,
+      `[contacts] ${pathname} is not an array; refusing to overwrite it`,
     );
   }
 
@@ -76,7 +93,7 @@ async function update(
     if (next === entries) return;
 
     try {
-      await put(CONTACTS_PATHNAME, JSON.stringify(next, null, 2), {
+      await put(contactsPathname(), JSON.stringify(next, null, 2), {
         access: "private",
         addRandomSuffix: false,
         allowOverwrite: true,

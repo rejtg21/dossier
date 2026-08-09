@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { get, put } from "@vercel/blob";
 
 import {
-  CONTACTS_PATHNAME,
+  contactsPathname,
   removeFailure,
   saveFailure,
   type FailedContact,
@@ -52,7 +52,35 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
+});
+
+describe("contactsPathname", () => {
+  it("defaults to contacts.json", () => {
+    expect(contactsPathname()).toBe("contacts.json");
+  });
+
+  it("uses CONTACTS_BLOB_PATHNAME when set", () => {
+    vi.stubEnv("CONTACTS_BLOB_PATHNAME", "archive/preview-contacts.json");
+
+    expect(contactsPathname()).toBe("archive/preview-contacts.json");
+  });
+
+  it("ignores a blank override rather than writing to an empty path", () => {
+    vi.stubEnv("CONTACTS_BLOB_PATHNAME", "   ");
+
+    expect(contactsPathname()).toBe("contacts.json");
+  });
+
+  it("reads and writes the overridden path", async () => {
+    vi.stubEnv("CONTACTS_BLOB_PATHNAME", "archive/preview-contacts.json");
+
+    await saveFailure(entry("msg_1"));
+
+    expect(read.mock.calls[0][0]).toBe("archive/preview-contacts.json");
+    expect(write.mock.calls[0][0]).toBe("archive/preview-contacts.json");
+  });
 });
 
 describe("saveFailure", () => {
@@ -60,7 +88,7 @@ describe("saveFailure", () => {
     await saveFailure(entry("msg_1"));
 
     const [pathname, , options] = write.mock.calls[0];
-    expect(pathname).toBe(CONTACTS_PATHNAME);
+    expect(pathname).toBe(contactsPathname());
     expect(options).toMatchObject({
       access: "private",
       addRandomSuffix: false,
