@@ -1,13 +1,20 @@
 // @vitest-environment node
 // Needs real Request/Response globals, which jsdom does not provide.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { send } from "@vercel/queue";
+import {
+  DeliveryError,
+  deliverContactEmail,
+} from "../queues/_send-contact-email";
 
-import handler, { CONTACT_TOPIC } from "./index";
+import handler from "./index";
 
-vi.mock("@vercel/queue", () => ({ send: vi.fn() }));
+vi.mock("../queues/_send-contact-email", async (importOriginal) => ({
+  // The real DeliveryError, so `instanceof` in the handler still matches.
+  ...(await importOriginal<object>()),
+  deliverContactEmail: vi.fn(),
+}));
 
-const enqueue = vi.mocked(send);
+const deliver = vi.mocked(deliverContactEmail);
 
 const valid = {
   name: "Rej Mediodia",
@@ -27,7 +34,7 @@ const post = (body: unknown, init: RequestInit = {}) =>
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  enqueue.mockResolvedValue({ messageId: "msg_1" });
+  deliver.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -35,76 +42,105 @@ afterEach(() => {
 });
 
 describe("POST /api/contact", () => {
-  it("queues the submission and answers 202 Accepted", async () => {
+  it("sends the submission and answers 200", async () => {
     const response = await post(valid);
 
-    // 202, not 200: accepted for delivery, not yet delivered.
-    expect(response.status).toBe(202);
+    // 200, not 202: without a queue the mail is already gone by the time we
+    // answer.
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(enqueue).toHaveBeenCalledOnce();
+    expect(deliver).toHaveBeenCalledOnce();
   });
 
-  it("publishes to the contact topic with just the submission", async () => {
+  it("passes just the submission through to delivery", async () => {
     await post({ ...valid, company: "" });
 
-    const [topic, payload] = enqueue.mock.calls[0];
-    expect(topic).toBe(CONTACT_TOPIC);
-    expect(payload).toEqual(valid);
-    // The honeypot is a transport detail and must not reach the worker.
-    expect(payload).not.toHaveProperty("company");
+    const [submission] = deliver.mock.calls[0];
+    expect(submission).toEqual(valid);
+    // The honeypot is a transport detail and must not reach the mailer.
+    expect(submission).not.toHaveProperty("company");
   });
 
-  it("keeps messages for the full retention window", async () => {
+  it("gives each submission its own message id", async () => {
+    await post(valid);
     await post(valid);
 
-    expect(enqueue.mock.calls[0][2]).toMatchObject({
-      retentionSeconds: 604_800,
-    });
+    const first = deliver.mock.calls[0][1].messageId;
+    const second = deliver.mock.calls[1][1].messageId;
+
+    // The id keys the Blob archive entry; a shared one would overwrite.
+    expect(first).toEqual(expect.any(String));
+    expect(first).not.toBe(second);
   });
 
-  it("returns 400 with field errors and queues nothing when invalid", async () => {
+  it("reports a single delivery attempt", async () => {
+    await post(valid);
+
+    // Honest: with no queue there is no redelivery, so this is the only try.
+    expect(deliver.mock.calls[0][1].deliveryCount).toBe(1);
+  });
+
+  it("returns 400 with field errors and sends nothing when invalid", async () => {
     const response = await post({ ...valid, email: "nope" });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toHaveProperty("errors.email");
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
-  it("accepts a honeypot submission but never queues it", async () => {
+  it("accepts a honeypot submission but never sends it", async () => {
     const response = await post({ ...valid, company: "Acme Corp" });
 
-    // Indistinguishable from success on the wire, by design, and spam never
-    // costs a delivery attempt.
-    expect(response.status).toBe(202);
+    // Indistinguishable from success on the wire, by design.
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
-  it("returns 502 when the queue is unreachable", async () => {
-    enqueue.mockRejectedValue(new Error("queue down"));
+  it("tells the visitor it worked when the mail failed but was archived", async () => {
+    deliver.mockRejectedValue(new DeliveryError("535 auth rejected", true));
 
     const response = await post(valid);
 
-    // Nothing to retry against, so the visitor must be told.
+    // Their message reached a human, which is what they actually care about.
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it("returns 502 when the mail failed and was not archived", async () => {
+    deliver.mockRejectedValue(new DeliveryError("535 auth rejected", false));
+
+    const response = await post(valid);
+
+    // Nothing was kept, so the submission really is lost.
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toHaveProperty("error");
   });
 
-  it("never leaks queue failure detail to the caller", async () => {
-    enqueue.mockRejectedValue(new Error("token oidc_secret_value expired"));
+  it("returns 502 for a failure that is not a DeliveryError", async () => {
+    deliver.mockRejectedValue(new Error("something unexpected"));
+
+    // No archive claim to trust, so assume the worst.
+    const response = await post(valid);
+
+    expect(response.status).toBe(502);
+  });
+
+  it("never leaks delivery failure detail to the caller", async () => {
+    deliver.mockRejectedValue(
+      new DeliveryError("535 auth rejected for abcd efgh ijkl mnop", false),
+    );
 
     const response = await post(valid);
 
-    expect(JSON.stringify(await response.json())).not.toContain(
-      "oidc_secret_value",
-    );
+    expect(JSON.stringify(await response.json())).not.toContain("abcd efgh");
   });
 
   it("rejects a malformed JSON body", async () => {
     const response = await post("{ not json");
 
     expect(response.status).toBe(400);
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it("rejects a non-POST method and advertises what it accepts", async () => {
@@ -114,7 +150,7 @@ describe("POST /api/contact", () => {
 
     expect(response.status).toBe(405);
     expect(response.headers.get("Allow")).toBe("POST");
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it("answers with JSON", async () => {

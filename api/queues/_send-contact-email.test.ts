@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { removeFailure, saveFailure } from "../services/_contacts-store";
 import { sendEmail } from "../services/_send-email";
-import { deliverContactEmail, retry } from "./send-contact-email";
+import {
+  DeliveryError,
+  deliverContactEmail,
+  retry,
+} from "./_send-contact-email";
 
 // handleCallback would try to configure a queue client at import time.
 vi.mock("@vercel/queue", () => ({ handleCallback: (fn: unknown) => fn }));
@@ -30,6 +34,10 @@ const meta = (deliveryCount = 1) => ({ deliveryCount, messageId: "msg_1" });
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   send.mockResolvedValue({ ok: true });
+  // Explicit defaults: clearAllMocks resets calls but keeps implementations, so
+  // a mockRejectedValue in one case would otherwise leak into the next.
+  save.mockResolvedValue(undefined);
+  remove.mockResolvedValue(undefined);
   vi.stubEnv("GMAIL_USER", "site@gmail.com");
   vi.stubEnv("GMAIL_APP_PASSWORD", "abcd efgh ijkl mnop");
   vi.stubEnv("CONTACT_TO_EMAIL", "inbox@example.com");
@@ -120,6 +128,40 @@ describe("deliverContactEmail", () => {
     await expect(deliverContactEmail(message, meta())).rejects.toThrow(
       /535 auth rejected/,
     );
+  });
+
+  it("marks the failure archived when the submission was stored", async () => {
+    send.mockResolvedValue({ ok: false, error: "535 auth rejected" });
+
+    // The caller uses this to decide whether the visitor sees a failure.
+    await expect(deliverContactEmail(message, meta())).rejects.toMatchObject({
+      archived: true,
+    });
+  });
+
+  it("marks the failure unarchived when storing failed too", async () => {
+    send.mockResolvedValue({ ok: false, error: "535 auth rejected" });
+    save.mockRejectedValue(new Error("blob unavailable"));
+
+    await expect(deliverContactEmail(message, meta())).rejects.toMatchObject({
+      archived: false,
+    });
+  });
+
+  it("throws a DeliveryError so the caller can read the flag", async () => {
+    send.mockResolvedValue({ ok: false, error: "535 auth rejected" });
+
+    await expect(deliverContactEmail(message, meta())).rejects.toBeInstanceOf(
+      DeliveryError,
+    );
+  });
+
+  it("reports the archive state when the env is missing too", async () => {
+    vi.stubEnv("GMAIL_USER", "");
+
+    await expect(deliverContactEmail(message, meta())).rejects.toMatchObject({
+      archived: true,
+    });
   });
 
   it("does not fail a successful send when clearing the record fails", async () => {

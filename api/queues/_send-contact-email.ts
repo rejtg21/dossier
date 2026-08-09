@@ -4,7 +4,26 @@ import { emit, type ContactSubmission, type EventName } from "../services/_event
 import { sendEmail } from "../services/_send-email";
 
 /**
- * Consumes the `contact-messages` topic and does the actual SMTP send.
+ * Does the actual SMTP send, and — when Queues is available — consumes the
+ * `contact-messages` topic.
+ *
+ * Currently only the first half is live. Vercel Queues requires a Pro plan, so
+ * `api/contact/index.ts` calls `deliverContactEmail` directly and this file is
+ * prefixed `_`, which keeps it off the public routing table. Nothing here was
+ * deleted; the `POST` export and retry policy below are intact and still
+ * tested.
+ *
+ * To switch back once Queues is available:
+ *   1. Rename this file to `send-contact-email.ts` (drop the `_`) so Vercel
+ *      routes it again.
+ *   2. Restore the trigger in `vercel.json`:
+ *      "functions": { "api/queues/send-contact-email.ts": {
+ *        "experimentalTriggers": [
+ *          { "type": "queue/v2beta", "topic": "contact-messages" }
+ *        ] } }
+ *   3. In `api/contact/index.ts`, publish with `send` from
+ *      `api/services/_queue.ts` instead of awaiting `deliverContactEmail`, and
+ *      answer 202 rather than 200.
  *
  * There is no subscribe call or polling loop here, because consumption is
  * push-based. The `experimentalTriggers` entry in `vercel.json` binds this file
@@ -57,18 +76,37 @@ export const retry = (_error: unknown, metadata: RetryMetadata) => {
 };
 
 /**
- * Storage problems must not change email semantics. A failed archive write is
- * logged and swallowed: the send outcome already decides whether the message is
- * redelivered, and on the failure path the next attempt archives again anyway.
+ * Thrown when the mail did not go out. `archived` says whether the submission
+ * was safely written to storage first.
+ *
+ * The caller needs that distinction: a failure that was archived is recoverable
+ * and the visitor's message is not lost, whereas one that was not is gone.
+ */
+export class DeliveryError extends Error {
+  constructor(
+    message: string,
+    readonly archived: boolean,
+  ) {
+    super(message);
+    this.name = "DeliveryError";
+  }
+}
+
+/**
+ * Storage problems must not change email semantics, so a failed listener is
+ * logged rather than thrown. It is still reported back, because whether the
+ * archive succeeded decides what the visitor is told.
  */
 async function emitQuietly<E extends EventName>(
   event: E,
   payload: Parameters<typeof emit<E>>[1],
-): Promise<void> {
+): Promise<boolean> {
   try {
     await emit(event, payload);
+    return true;
   } catch (cause) {
     console.error(`[contact] listener for ${event} failed: ${String(cause)}`);
+    return false;
   }
 }
 
@@ -84,14 +122,14 @@ export async function deliverContactEmail(
     const error =
       "[contact] missing env: GMAIL_USER, GMAIL_APP_PASSWORD and CONTACT_TO_EMAIL are all required";
 
-    await emitQuietly("email-failed", {
+    const archived = await emitQuietly("email-failed", {
       messageId: metadata.messageId,
       deliveryCount: metadata.deliveryCount,
       error,
       submission: message,
     });
 
-    throw new Error(error);
+    throw new DeliveryError(error, archived);
   }
 
   const sent = await sendEmail({
@@ -104,7 +142,7 @@ export async function deliverContactEmail(
   });
 
   if (!sent.ok) {
-    await emitQuietly("email-failed", {
+    const archived = await emitQuietly("email-failed", {
       messageId: metadata.messageId,
       deliveryCount: metadata.deliveryCount,
       error: sent.error,
@@ -118,9 +156,10 @@ export async function deliverContactEmail(
       );
     }
 
-    // Rethrown so the SDK redelivers. The error string can echo credentials,
-    // so it goes to logs only — nothing here reaches a visitor.
-    throw new Error(sent.error);
+    // Thrown so the SDK redelivers under Queues, and so the synchronous caller
+    // can decide what to tell the visitor. The message can echo credentials, so
+    // it goes to logs only — nothing here reaches a response body.
+    throw new DeliveryError(sent.error, archived);
   }
 
   // Succeeded, possibly after earlier failures: clear any record of it.

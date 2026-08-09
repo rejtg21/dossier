@@ -39,7 +39,7 @@ test.describe("contact form", () => {
   });
 
   test("posts the submission as JSON to the function", async ({ page }) => {
-    await stub(page, 202, { ok: true });
+    await stub(page, 200, { ok: true });
 
     const request = page.waitForRequest("**/api/contact");
     await fillValid(page);
@@ -55,7 +55,7 @@ test.describe("contact form", () => {
   });
 
   test("confirms success to the visitor", async ({ page }) => {
-    await stub(page, 202, { ok: true });
+    await stub(page, 200, { ok: true });
 
     await fillValid(page);
     await sendButton(page).click();
@@ -99,7 +99,7 @@ test.describe("contact form", () => {
   test("is operable by keyboard, and Tab never reaches the honeypot", async ({
     page,
   }) => {
-    await stub(page, 202, { ok: true });
+    await stub(page, 200, { ok: true });
 
     await page.getByLabel(/^name$/i).focus();
     await page.keyboard.type("Rej Mediodia");

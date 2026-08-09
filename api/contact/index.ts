@@ -1,15 +1,33 @@
-import { send } from "@vercel/queue";
+import { randomUUID } from "node:crypto";
+import {
+  DeliveryError,
+  deliverContactEmail,
+} from "../queues/_send-contact-email";
 import { validateSubmission } from "./_validate";
 
 /**
- * `POST /api/contact` — validates a submission and queues it for delivery.
+ * `POST /api/contact` — validates a submission and sends it.
  *
- * This endpoint does not send the email. It publishes to the `contact-messages`
- * topic and returns immediately; `api/queues/send-contact-email.ts` consumes
- * the topic and does the SMTP work, so a Gmail outage or a timeout retries in
- * the background instead of failing the visitor's request.
+ * Delivery is synchronous: Vercel Queues needs a Pro plan, so this calls the
+ * delivery path directly instead of publishing to a topic. The queue code is
+ * still here and still tested — see `api/queues/_send-contact-email.ts` for how
+ * to switch back.
  *
- * That makes the response 202, not 200: the message is accepted, not yet sent.
+ * What survives the loss of the queue, and what does not:
+ *
+ * - Still works: a failed send is archived to Blob, because
+ *   `deliverContactEmail` emits `email-failed` either way. Nothing is lost.
+ * - Gone: automatic retries. There is no redelivery, so a submission that fails
+ *   stays in `contacts.json` until it is dealt with by hand.
+ * - The visitor now waits on SMTP, so this responds 200 (sent) rather than 202
+ *   (accepted).
+ *
+ * Three outcomes reach the visitor, not two:
+ *
+ *   sent                        -> 200
+ *   not sent, but archived      -> 200, because their message did reach a human
+ *   not sent and not archived   -> 502, the only case genuinely worth telling
+ *                                  them about
  *
  * Layout here is dictated by Vercel, not preference:
  *
@@ -23,16 +41,6 @@ import { validateSubmission } from "./_validate";
  * Not reachable under `next dev` or `serve out` — the site is a static export,
  * so nothing local serves `/api`. Use `vercel dev` to exercise it.
  */
-
-export const CONTACT_TOPIC = "contact-messages";
-
-/**
- * Contact messages are irreplaceable — a lost one is a lost client — so they
- * outlive the 24h default. Seven days is the maximum the platform allows, and
- * it means a message published before a misconfiguration is fixed still lands
- * once the fix deploys.
- */
-const RETENTION_SECONDS = 604_800;
 
 const GENERIC_FAILURE =
   "Something went wrong sending your message. Please email me directly.";
@@ -63,28 +71,36 @@ const handler = {
     }
 
     // Silently accept: a bot told it was caught learns to avoid the trap, and
-    // the visitor-facing response should look identical either way. Dropped
-    // before the queue so spam never costs a delivery attempt.
+    // the visitor-facing response should look identical either way.
     if (result.value.isSpam) {
-      return json({ ok: true }, 202);
+      return json({ ok: true }, 200);
     }
 
     const { name, email, message } = result.value;
 
     try {
-      await send(
-        CONTACT_TOPIC,
+      await deliverContactEmail(
         { name, email, message },
-        { retentionSeconds: RETENTION_SECONDS },
+        // Stands in for the queue's metadata. `deliveryCount: 1` is honest:
+        // without a queue this is the only attempt there will ever be.
+        { messageId: randomUUID(), deliveryCount: 1 },
       );
     } catch (cause) {
-      // The queue itself is unreachable, so there is nothing to retry against
-      // and the visitor needs to know their message did not land.
-      console.error(`[contact] enqueue failed: ${String(cause)}`);
+      // Detail can echo credentials, so it goes to logs only.
+      console.error(`[contact] send failed: ${String(cause)}`);
+
+      // The mail did not go out, but if the submission reached storage it is
+      // not lost — it will be picked up from `contacts.json` and answered by
+      // hand. From the visitor's side that is a success: they got their message
+      // to a human. Only an unarchived failure is worth troubling them with.
+      if (cause instanceof DeliveryError && cause.archived) {
+        return json({ ok: true }, 200);
+      }
+
       return json({ error: GENERIC_FAILURE }, 502);
     }
 
-    return json({ ok: true }, 202);
+    return json({ ok: true }, 200);
   },
 };
 
