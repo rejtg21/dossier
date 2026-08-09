@@ -1,11 +1,11 @@
 // @vitest-environment node
 // Needs real Request/Response globals, which jsdom does not provide.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { send } from "@vercel/queue";
+import { send } from "../services/_queue";
 
 import handler, { CONTACT_TOPIC } from "./index";
 
-vi.mock("@vercel/queue", () => ({ send: vi.fn() }));
+vi.mock("../services/_queue", () => ({ send: vi.fn() }));
 
 const enqueue = vi.mocked(send);
 

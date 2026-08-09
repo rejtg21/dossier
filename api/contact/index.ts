@@ -1,4 +1,4 @@
-import { send } from "@vercel/queue";
+import { send } from "../services/_queue";
 import { validateSubmission } from "./_validate";
 
 /**
