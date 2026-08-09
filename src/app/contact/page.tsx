@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ContactForm } from "@/components/contact-form";
 import { ScreenIntro } from "@/components/screen-intro";
 import { contactHeading, contactIntro, contactLinks } from "@/data/contact";
 
@@ -27,6 +28,10 @@ export default function ContactPage() {
             {link.label}
           </a>
         ))}
+      </div>
+
+      <div className="mt-16">
+        <ContactForm />
       </div>
     </section>
   );
