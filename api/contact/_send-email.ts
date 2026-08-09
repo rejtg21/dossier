@@ -1,4 +1,4 @@
-import type { SendEmailArgs } from "./types";
+import type { SendEmailArgs } from "./_types";
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 

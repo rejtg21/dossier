@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LIMITS, validateSubmission } from "./validate";
+import { LIMITS, validateSubmission } from "./_validate";
 
 const valid = {
   name: "Rej Mediodia",

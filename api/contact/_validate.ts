@@ -1,4 +1,4 @@
-import type { FieldName, ValidationResult } from "./types";
+import type { FieldName, ValidationResult } from "./_types";
 
 export const LIMITS = {
   name: 100,

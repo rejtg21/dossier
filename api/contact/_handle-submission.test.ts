@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleSubmission } from "./handle-submission";
-import type { ContactEnv, SendEmail } from "./types";
+import { handleSubmission } from "./_handle-submission";
+import type { ContactEnv, SendEmail } from "./_types";
 
 const valid = {
   name: "Rej Mediodia",

@@ -1,8 +1,8 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { LIMITS, validateSubmission } from "../../server/contact/validate";
-import type { FieldName } from "../../server/contact/types";
+import { LIMITS, validateSubmission } from "../../api/contact/_validate";
+import type { FieldName } from "../../api/contact/_types";
 
 type Status = "idle" | "submitting" | "success" | "error";
 
@@ -15,7 +15,7 @@ const LABEL_CLASSES =
 /**
  * Posts to the Vercel Function at `/api/contact`.
  *
- * Validation is imported from `server/contact/validate` rather than reimplemented
+ * Validation is imported from `api/contact/_validate` rather than reimplemented
  * here, so the instant feedback a visitor sees and the rules the function
  * enforces cannot drift apart. The module is pure — no secrets, no Node APIs —
  * so shipping it to the browser costs nothing.

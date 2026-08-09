@@ -1,5 +1,5 @@
-import type { ContactEnv, FieldName, SendEmail } from "./types";
-import { validateSubmission } from "./validate";
+import type { ContactEnv, FieldName, SendEmail } from "./_types";
+import { validateSubmission } from "./_validate";
 
 export interface HandlerResult {
   status: number;
