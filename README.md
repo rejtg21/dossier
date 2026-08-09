@@ -1,12 +1,12 @@
 # dossier
 
-Rej Mediodia's portfolio — a statically exported Next.js site with a contact
-form backed by a Vercel Function.
+A portfolio site built on a static site generation (SSG) architecture, with a
+Vercel Function for the one part that needs a server.
 
-The six content pages are prerendered to plain HTML at build time; there is no
-server rendering and no runtime data fetching. The only server-side code is the
-contact endpoint, which is a Vercel Function rather than a Next.js route,
-because `output: "export"` forbids Route Handlers and Server Actions.
+Every content page is prerendered to plain HTML at build time — no server
+rendering, no runtime data fetching. The contact endpoint is a Vercel Function
+rather than a Next.js route, because `output: "export"` forbids Route Handlers
+and Server Actions.
 
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 ·
 Vitest · Playwright · Nodemailer.
@@ -58,9 +58,9 @@ be live at `/api/contact/validate.test`. Only `api/contact/index.ts` may lack it
 
 ## Contact form
 
-A submission is validated, then emailed via Gmail SMTP using an app password.
-Delivery is **synchronous** on this branch — Vercel Queues requires a Pro plan,
-so the queue consumer is retained but inactive. See the header of
+A submission is validated, then emailed via Gmail SMTP. Delivery is
+**synchronous** on this branch — Vercel Queues requires a Pro plan, so the queue
+consumer is retained but inactive. See the header of
 `api/queues/_send-contact-email.ts` for the three steps to switch back.
 
 If the send fails, the submission is archived to Vercel Blob so it is never
@@ -70,23 +70,6 @@ Only a failure that could not be archived reports an error.
 Validation lives in `api/contact/_validate.ts` and is imported by both the
 function and the browser form, so client-side feedback cannot drift from what
 the server enforces.
-
-### Environment variables
-
-Set these in the Vercel dashboard, then `vercel env pull` for local work.
-
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `GMAIL_USER` | yes | The Gmail address that authenticates. Gmail forces it to be the sender; the visitor's address goes in reply-to. |
-| `GMAIL_APP_PASSWORD` | yes | 16-character [app password](https://myaccount.google.com/apppasswords), not the account password. Needs 2-Step Verification. Paste it without spaces. |
-| `CONTACT_TO_EMAIL` | yes | Where submissions are delivered. |
-| `CONTACTS_BLOB_PATHNAME` | no | Archive filename, default `contacts.json`. Point preview at a different one so it cannot write into the production archive. |
-| `BLOB_READ_WRITE_TOKEN` | yes | Injected automatically once a Blob store is connected — do not set it by hand. |
-
-A Blob store must exist for the archive to work: `vercel blob create-store contacts`.
-Without one, a failed send is lost rather than kept.
-
-Gmail caps sending at roughly 500/day on a free account, 2,000 on Workspace.
 
 ## Testing
 
@@ -100,6 +83,5 @@ red, then restore.
 
 ## Deployment
 
-Pushed to Vercel. The build produces `out/`; the `api/` directory is deployed as
-functions alongside it. Environment variables only apply to new deployments, so
-redeploy after changing them.
+Deployed on Vercel. The build produces `out/`, and the `api/` directory is
+deployed as functions alongside it.
