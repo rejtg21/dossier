@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { deliverContactEmail } from "../queues/_send-contact-email";
+import {
+  DeliveryError,
+  deliverContactEmail,
+} from "../queues/_send-contact-email";
 import { validateSubmission } from "./_validate";
 
 /**
@@ -18,6 +21,13 @@ import { validateSubmission } from "./_validate";
  *   stays in `contacts.json` until it is dealt with by hand.
  * - The visitor now waits on SMTP, so this responds 200 (sent) rather than 202
  *   (accepted).
+ *
+ * Three outcomes reach the visitor, not two:
+ *
+ *   sent                        -> 200
+ *   not sent, but archived      -> 200, because their message did reach a human
+ *   not sent and not archived   -> 502, the only case genuinely worth telling
+ *                                  them about
  *
  * Layout here is dictated by Vercel, not preference:
  *
@@ -76,9 +86,17 @@ const handler = {
         { messageId: randomUUID(), deliveryCount: 1 },
       );
     } catch (cause) {
-      // Already archived to Blob by the `email-failed` listener, so this stays
-      // recoverable by hand. The detail can echo credentials — logs only.
+      // Detail can echo credentials, so it goes to logs only.
       console.error(`[contact] send failed: ${String(cause)}`);
+
+      // The mail did not go out, but if the submission reached storage it is
+      // not lost — it will be picked up from `contacts.json` and answered by
+      // hand. From the visitor's side that is a success: they got their message
+      // to a human. Only an unarchived failure is worth troubling them with.
+      if (cause instanceof DeliveryError && cause.archived) {
+        return json({ ok: true }, 200);
+      }
+
       return json({ error: GENERIC_FAILURE }, 502);
     }
 

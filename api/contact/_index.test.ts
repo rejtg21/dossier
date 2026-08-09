@@ -1,11 +1,16 @@
 // @vitest-environment node
 // Needs real Request/Response globals, which jsdom does not provide.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { deliverContactEmail } from "../queues/_send-contact-email";
+import {
+  DeliveryError,
+  deliverContactEmail,
+} from "../queues/_send-contact-email";
 
 import handler from "./index";
 
-vi.mock("../queues/_send-contact-email", () => ({
+vi.mock("../queues/_send-contact-email", async (importOriginal) => ({
+  // The real DeliveryError, so `instanceof` in the handler still matches.
+  ...(await importOriginal<object>()),
   deliverContactEmail: vi.fn(),
 }));
 
@@ -92,18 +97,38 @@ describe("POST /api/contact", () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  it("returns 502 when delivery fails", async () => {
-    deliver.mockRejectedValue(new Error("535 auth rejected"));
+  it("tells the visitor it worked when the mail failed but was archived", async () => {
+    deliver.mockRejectedValue(new DeliveryError("535 auth rejected", true));
 
     const response = await post(valid);
 
+    // Their message reached a human, which is what they actually care about.
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
+  it("returns 502 when the mail failed and was not archived", async () => {
+    deliver.mockRejectedValue(new DeliveryError("535 auth rejected", false));
+
+    const response = await post(valid);
+
+    // Nothing was kept, so the submission really is lost.
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toHaveProperty("error");
   });
 
+  it("returns 502 for a failure that is not a DeliveryError", async () => {
+    deliver.mockRejectedValue(new Error("something unexpected"));
+
+    // No archive claim to trust, so assume the worst.
+    const response = await post(valid);
+
+    expect(response.status).toBe(502);
+  });
+
   it("never leaks delivery failure detail to the caller", async () => {
     deliver.mockRejectedValue(
-      new Error("535 auth rejected for abcd efgh ijkl mnop"),
+      new DeliveryError("535 auth rejected for abcd efgh ijkl mnop", false),
     );
 
     const response = await post(valid);
