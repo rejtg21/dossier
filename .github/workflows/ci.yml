@@ -31,8 +31,11 @@ jobs:
 
       # Not covered by eslint: type errors fail the Vercel build, so catch them
       # here rather than at deploy time.
-      - name: Typecheck
-        run: npx tsc --noEmit
+      #
+      # `npm run typecheck` runs `next typegen` first. Types like LayoutProps
+      # are generated into .next, which does not exist in a fresh checkout, so a
+      # bare `tsc --noEmit` fails in CI while passing locally.
+      - run: npm run typecheck
 
       - run: npm test
 
