@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
  * `/api/contact` is a Vercel Function and does not exist in `out/`, so every
  * spec here stubs it. That is the right boundary anyway: the function's own
  * behaviour is covered by `api/contact/_*.test.ts` against its real logic,
- * and asserting against a live third-party mailer would test Resend, not this
+ * and asserting against a live mailer would test Gmail's SMTP, not this
  * site.
  *
  * What only a browser can prove is on this side of the wire — that the form is

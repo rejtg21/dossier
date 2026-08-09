@@ -54,14 +54,13 @@ const handler = {
       return json({ ok: true }, 200);
     }
 
-    const { RESEND_API_KEY, CONTACT_TO_EMAIL, CONTACT_FROM_EMAIL } =
-      process.env;
+    const { GMAIL_USER, GMAIL_APP_PASSWORD, CONTACT_TO_EMAIL } = process.env;
 
-    if (!RESEND_API_KEY || !CONTACT_TO_EMAIL || !CONTACT_FROM_EMAIL) {
+    if (!GMAIL_USER || !GMAIL_APP_PASSWORD || !CONTACT_TO_EMAIL) {
       // A misconfigured deploy is an operator problem, not a visitor problem,
       // so the visitor gets the generic message and the detail goes to the logs.
       console.error(
-        "[contact] missing env: RESEND_API_KEY, CONTACT_TO_EMAIL and CONTACT_FROM_EMAIL are all required",
+        "[contact] missing env: GMAIL_USER, GMAIL_APP_PASSWORD and CONTACT_TO_EMAIL are all required",
       );
       return json({ error: GENERIC_FAILURE }, 500);
     }
@@ -69,9 +68,9 @@ const handler = {
     const { name, email, message } = result.value;
 
     const sent = await sendEmail({
-      apiKey: RESEND_API_KEY,
+      user: GMAIL_USER,
+      appPassword: GMAIL_APP_PASSWORD,
       to: CONTACT_TO_EMAIL,
-      from: CONTACT_FROM_EMAIL,
       replyTo: email,
       subject: `Portfolio contact from ${name}`,
       text: `From: ${name} <${email}>\n\n${message}`,

@@ -28,9 +28,9 @@ const post = (body: unknown, init: RequestInit = {}) =>
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   send.mockResolvedValue({ ok: true });
-  vi.stubEnv("RESEND_API_KEY", "re_test");
+  vi.stubEnv("GMAIL_USER", "site@gmail.com");
+  vi.stubEnv("GMAIL_APP_PASSWORD", "abcd efgh ijkl mnop");
   vi.stubEnv("CONTACT_TO_EMAIL", "inbox@example.com");
-  vi.stubEnv("CONTACT_FROM_EMAIL", "site@example.com");
 });
 
 afterEach(() => {
@@ -47,12 +47,13 @@ describe("POST /api/contact", () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
-  it("puts the visitor's address in replyTo, not in from", async () => {
+  it("puts the visitor's address in replyTo, never in the sender", async () => {
     await post(valid);
 
-    // `from` must stay on the verified domain or Resend rejects the send.
+    // Gmail rewrites any sender other than the authenticated account, so the
+    // visitor must arrive as replyTo or replies would go nowhere.
     expect(send.mock.calls[0][0]).toMatchObject({
-      from: "site@example.com",
+      user: "site@gmail.com",
       to: "inbox@example.com",
       replyTo: "someone@example.com",
     });
@@ -84,7 +85,7 @@ describe("POST /api/contact", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it.each(["RESEND_API_KEY", "CONTACT_TO_EMAIL", "CONTACT_FROM_EMAIL"] as const)(
+  it.each(["GMAIL_USER", "GMAIL_APP_PASSWORD", "CONTACT_TO_EMAIL"] as const)(
     "returns 500 without sending when %s is missing",
     async (key) => {
       vi.stubEnv(key, "");
@@ -108,12 +109,12 @@ describe("POST /api/contact", () => {
   it("never leaks provider detail to the caller", async () => {
     send.mockResolvedValue({
       ok: false,
-      error: "Resend responded 401: invalid api key re_secret",
+      error: "Gmail SMTP send failed: 535 auth rejected for abcd efgh ijkl mnop",
     });
 
     const response = await post(valid);
 
-    expect(JSON.stringify(await response.json())).not.toContain("re_secret");
+    expect(JSON.stringify(await response.json())).not.toContain("abcd efgh");
   });
 
   it("rejects a malformed JSON body", async () => {

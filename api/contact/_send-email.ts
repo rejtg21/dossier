@@ -1,60 +1,73 @@
-const RESEND_ENDPOINT = "https://api.resend.com/emails";
+import nodemailer, { type Transporter } from "nodemailer";
 
 interface SendEmailArgs {
-  apiKey: string;
+  /** The Gmail address that authenticates. Gmail forces it to be the sender. */
+  user: string;
+  /** A 16-character Google App Password, not the account password. */
+  appPassword: string;
   to: string;
-  from: string;
   replyTo: string;
   subject: string;
   text: string;
 }
 
 /**
- * Posts to Resend's REST API directly rather than pulling in the SDK: it is one
- * request, and the dependency buys nothing here.
+ * Cached across invocations on purpose: a warm function instance reuses the
+ * pooled SMTP connection instead of paying the TLS handshake every time.
+ * Credentials cannot change within an instance, so caching on first use is safe.
+ */
+let transporter: Transporter | undefined;
+
+const getTransporter = (user: string, appPassword: string): Transporter => {
+  transporter ??= nodemailer.createTransport({
+    service: "gmail",
+    pool: true,
+    auth: { user, pass: appPassword },
+  });
+
+  return transporter;
+};
+
+/** Test seam: the module-level cache would otherwise leak between cases. */
+export const resetTransporter = () => {
+  transporter = undefined;
+};
+
+/**
+ * Sends through Gmail's SMTP using a Google App Password.
  *
- * `replyTo` is the visitor's address, so replying from the inbox reaches them —
- * `from` must stay on a domain verified with Resend or the send is rejected.
+ * `from` is the authenticated account rather than the visitor: Gmail rewrites
+ * any other sender, and spoofing one would fail SPF/DKIM and land in spam.
+ * The visitor's address goes in `replyTo`, so replying from the inbox still
+ * reaches them.
+ *
+ * Requires 2-Step Verification on the Google account — App Passwords cannot be
+ * created without it. Gmail also caps sending (roughly 500/day on a free
+ * account, 2,000 on Workspace), which is ample for a contact form but is a real
+ * ceiling.
  *
  * Never throws: the caller decides what a failure means, and the error string
- * is for logs only. It can contain the API key echoed back by Resend, so it
- * must never reach a response body.
+ * is for logs only. It can echo credentials back, so it must never reach a
+ * response body.
  */
 export async function sendEmail({
-  apiKey,
+  user,
+  appPassword,
   to,
-  from,
   replyTo,
   subject,
   text,
 }: SendEmailArgs): Promise<{ ok: true } | { ok: false; error: string }> {
-  let response: Response;
-
   try {
-    response = await fetch(RESEND_ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        reply_to: replyTo,
-        subject,
-        text,
-      }),
+    await getTransporter(user, appPassword).sendMail({
+      from: user,
+      to,
+      replyTo,
+      subject,
+      text,
     });
   } catch (cause) {
-    return { ok: false, error: `Request to Resend failed: ${String(cause)}` };
-  }
-
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    return {
-      ok: false,
-      error: `Resend responded ${response.status}: ${detail.slice(0, 500)}`,
-    };
+    return { ok: false, error: `Gmail SMTP send failed: ${String(cause)}` };
   }
 
   return { ok: true };
