@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/queues/send-contact-email.ts": {
+      "experimentalTriggers": [
+        { "type": "queue/v2beta", "topic": "contact-messages" }
+      ]
+    }
+  }
+}

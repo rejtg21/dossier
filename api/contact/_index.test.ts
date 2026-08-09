@@ -1,13 +1,13 @@
 // @vitest-environment node
 // Needs real Request/Response globals, which jsdom does not provide.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { send } from "@vercel/queue";
 
-import handler from "./index";
-import { sendEmail } from "./_send-email";
+import handler, { CONTACT_TOPIC } from "./index";
 
-vi.mock("./_send-email", () => ({ sendEmail: vi.fn() }));
+vi.mock("@vercel/queue", () => ({ send: vi.fn() }));
 
-const send = vi.mocked(sendEmail);
+const enqueue = vi.mocked(send);
 
 const valid = {
   name: "Rej Mediodia",
@@ -27,101 +27,84 @@ const post = (body: unknown, init: RequestInit = {}) =>
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  send.mockResolvedValue({ ok: true });
-  vi.stubEnv("GMAIL_USER", "site@gmail.com");
-  vi.stubEnv("GMAIL_APP_PASSWORD", "abcd efgh ijkl mnop");
-  vi.stubEnv("CONTACT_TO_EMAIL", "inbox@example.com");
+  enqueue.mockResolvedValue({ messageId: "msg_1" });
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
 
 describe("POST /api/contact", () => {
-  it("sends the email and returns 200 for a valid submission", async () => {
+  it("queues the submission and answers 202 Accepted", async () => {
     const response = await post(valid);
 
-    expect(response.status).toBe(200);
+    // 202, not 200: accepted for delivery, not yet delivered.
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(send).toHaveBeenCalledOnce();
+    expect(enqueue).toHaveBeenCalledOnce();
   });
 
-  it("puts the visitor's address in replyTo, never in the sender", async () => {
+  it("publishes to the contact topic with just the submission", async () => {
+    await post({ ...valid, company: "" });
+
+    const [topic, payload] = enqueue.mock.calls[0];
+    expect(topic).toBe(CONTACT_TOPIC);
+    expect(payload).toEqual(valid);
+    // The honeypot is a transport detail and must not reach the worker.
+    expect(payload).not.toHaveProperty("company");
+  });
+
+  it("keeps messages for the full retention window", async () => {
     await post(valid);
 
-    // Gmail rewrites any sender other than the authenticated account, so the
-    // visitor must arrive as replyTo or replies would go nowhere.
-    expect(send.mock.calls[0][0]).toMatchObject({
-      user: "site@gmail.com",
-      to: "inbox@example.com",
-      replyTo: "someone@example.com",
+    expect(enqueue.mock.calls[0][2]).toMatchObject({
+      retentionSeconds: 604_800,
     });
   });
 
-  it("includes the name and message in the email body", async () => {
-    await post(valid);
-
-    const { text, subject } = send.mock.calls[0][0];
-    expect(subject).toContain("Rej Mediodia");
-    expect(text).toContain("someone@example.com");
-    expect(text).toContain("I would like to talk about a project.");
-  });
-
-  it("returns 400 with field errors and sends nothing when invalid", async () => {
+  it("returns 400 with field errors and queues nothing when invalid", async () => {
     const response = await post({ ...valid, email: "nope" });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toHaveProperty("errors.email");
-    expect(send).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it("accepts a honeypot submission but never sends it", async () => {
+  it("accepts a honeypot submission but never queues it", async () => {
     const response = await post({ ...valid, company: "Acme Corp" });
 
-    // Indistinguishable from success on the wire, by design.
-    expect(response.status).toBe(200);
+    // Indistinguishable from success on the wire, by design, and spam never
+    // costs a delivery attempt.
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(send).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it.each(["GMAIL_USER", "GMAIL_APP_PASSWORD", "CONTACT_TO_EMAIL"] as const)(
-    "returns 500 without sending when %s is missing",
-    async (key) => {
-      vi.stubEnv(key, "");
-
-      const response = await post(valid);
-
-      expect(response.status).toBe(500);
-      expect(send).not.toHaveBeenCalled();
-    },
-  );
-
-  it("returns 502 when the provider fails", async () => {
-    send.mockResolvedValue({ ok: false, error: "boom" });
+  it("returns 502 when the queue is unreachable", async () => {
+    enqueue.mockRejectedValue(new Error("queue down"));
 
     const response = await post(valid);
 
+    // Nothing to retry against, so the visitor must be told.
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toHaveProperty("error");
   });
 
-  it("never leaks provider detail to the caller", async () => {
-    send.mockResolvedValue({
-      ok: false,
-      error: "Gmail SMTP send failed: 535 auth rejected for abcd efgh ijkl mnop",
-    });
+  it("never leaks queue failure detail to the caller", async () => {
+    enqueue.mockRejectedValue(new Error("token oidc_secret_value expired"));
 
     const response = await post(valid);
 
-    expect(JSON.stringify(await response.json())).not.toContain("abcd efgh");
+    expect(JSON.stringify(await response.json())).not.toContain(
+      "oidc_secret_value",
+    );
   });
 
   it("rejects a malformed JSON body", async () => {
     const response = await post("{ not json");
 
     expect(response.status).toBe(400);
-    expect(send).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("rejects a non-POST method and advertises what it accepts", async () => {
@@ -131,7 +114,7 @@ describe("POST /api/contact", () => {
 
     expect(response.status).toBe(405);
     expect(response.headers.get("Allow")).toBe("POST");
-    expect(send).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it("answers with JSON", async () => {
