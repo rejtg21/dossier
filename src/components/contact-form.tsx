@@ -81,12 +81,14 @@ export function ContactForm() {
   const describedBy = (name: FieldName) =>
     errors[name] ? errorId(name) : undefined;
 
+  // Centred and capped below lg, where it sits under the intro; at lg it fills
+  // its grid column instead.
   return (
     <form
       ref={formRef}
       onSubmit={onSubmit}
       noValidate
-      className="mx-auto w-full max-w-[520px] text-left"
+      className="mx-auto w-full max-w-[520px] text-left lg:max-w-none"
       aria-labelledby={`${formId}-legend`}
     >
       <h2 id={`${formId}-legend`} className="sr-only">
@@ -172,7 +174,7 @@ export function ContactForm() {
         <button
           type="submit"
           disabled={status === "submitting"}
-          className="rounded-[4px] border border-line px-4 py-[12px] font-mono text-[15px] text-fg hover:bg-surface-active focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
+          className="w-full rounded-[4px] bg-accent px-4 py-[14px] font-mono text-[15px] font-medium text-canvas hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-60"
         >
           {status === "submitting" ? "Sending…" : "Send message"}
         </button>
