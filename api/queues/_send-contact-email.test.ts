@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { removeFailure, saveFailure } from "../services/_contacts-store";
 import { sendEmail } from "../services/_send-email";
-import { deliverContactEmail, retry } from "./send-contact-email";
+import { deliverContactEmail, retry } from "./_send-contact-email";
 
 // handleCallback would try to configure a queue client at import time.
 vi.mock("@vercel/queue", () => ({ handleCallback: (fn: unknown) => fn }));

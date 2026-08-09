@@ -1,6 +1,21 @@
 import { QueueClient } from "@vercel/queue";
 
 /**
+ * Kept intact but currently unused: Vercel Queues requires a Pro plan, so
+ * `api/contact/index.ts` calls the delivery path directly instead of
+ * publishing. Everything needed to switch back lives here and in
+ * `api/queues/_send-contact-email.ts` — see that file for the steps.
+ */
+export const CONTACT_TOPIC = "contact-messages";
+
+/**
+ * Seven days, the platform maximum. A lost contact message is a lost client, so
+ * a queued message should outlive a misconfiguration rather than expire during
+ * one.
+ */
+export const RETENTION_SECONDS = 604_800;
+
+/**
  * The queue client used to publish contact messages.
  *
  * By default the SDK pins each published message to `VERCEL_DEPLOYMENT_ID`, so

@@ -4,7 +4,26 @@ import { emit, type ContactSubmission, type EventName } from "../services/_event
 import { sendEmail } from "../services/_send-email";
 
 /**
- * Consumes the `contact-messages` topic and does the actual SMTP send.
+ * Does the actual SMTP send, and — when Queues is available — consumes the
+ * `contact-messages` topic.
+ *
+ * Currently only the first half is live. Vercel Queues requires a Pro plan, so
+ * `api/contact/index.ts` calls `deliverContactEmail` directly and this file is
+ * prefixed `_`, which keeps it off the public routing table. Nothing here was
+ * deleted; the `POST` export and retry policy below are intact and still
+ * tested.
+ *
+ * To switch back once Queues is available:
+ *   1. Rename this file to `send-contact-email.ts` (drop the `_`) so Vercel
+ *      routes it again.
+ *   2. Restore the trigger in `vercel.json`:
+ *      "functions": { "api/queues/send-contact-email.ts": {
+ *        "experimentalTriggers": [
+ *          { "type": "queue/v2beta", "topic": "contact-messages" }
+ *        ] } }
+ *   3. In `api/contact/index.ts`, publish with `send` from
+ *      `api/services/_queue.ts` instead of awaiting `deliverContactEmail`, and
+ *      answer 202 rather than 200.
  *
  * There is no subscribe call or polling loop here, because consumption is
  * push-based. The `experimentalTriggers` entry in `vercel.json` binds this file
