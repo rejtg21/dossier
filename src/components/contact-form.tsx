@@ -1,8 +1,11 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { LIMITS, validateSubmission } from "../../api/contact/_validate";
-import type { FieldName } from "../../api/contact/_types";
+import {
+  LIMITS,
+  validateSubmission,
+  type FieldName,
+} from "../../api/contact/_validate";
 
 type Status = "idle" | "submitting" | "success" | "error";
 

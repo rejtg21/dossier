@@ -1,4 +1,17 @@
-import type { FieldName, ValidationResult } from "./_types";
+export type FieldName = "name" | "email" | "message";
+
+export type ValidationResult =
+  | {
+      ok: true;
+      value: {
+        name: string;
+        email: string;
+        message: string;
+        /** The honeypot was filled. Valid, but must not be delivered. */
+        isSpam: boolean;
+      };
+    }
+  | { ok: false; errors: Partial<Record<FieldName, string>> };
 
 export const LIMITS = {
   name: 100,
@@ -21,7 +34,12 @@ const asString = (value: unknown): string =>
  * Validates a parsed JSON body from the wire, so every field is `unknown` until
  * proven otherwise — a client can post anything, including nothing.
  *
- * The `company` field is a honeypot: it is hidden from sighted users and from
+ * Kept in its own module because the browser form imports it too: the instant
+ * feedback a visitor sees and the rules the function enforces are the same code
+ * and cannot drift. It is pure — no secrets, no Node APIs — so shipping it to
+ * the browser costs nothing.
+ *
+ * The `company` field is a honeypot: hidden from sighted users and from
  * assistive tech, so a human never fills it. Bots fill every input they find.
  * A filled honeypot is reported as `isSpam` rather than as a validation error,
  * because telling a bot why it failed just teaches it to pass.

@@ -1,23 +1,37 @@
-import type { SendEmailArgs } from "./_types";
-
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
+
+interface SendEmailArgs {
+  apiKey: string;
+  to: string;
+  from: string;
+  replyTo: string;
+  subject: string;
+  text: string;
+}
 
 /**
  * Posts to Resend's REST API directly rather than pulling in the SDK: it is one
- * request, and a dependency-free module is trivial to test with an injected
- * `fetch`.
+ * request, and the dependency buys nothing here.
  *
  * `replyTo` is the visitor's address, so replying from the inbox reaches them —
  * `from` must stay on a domain verified with Resend or the send is rejected.
+ *
+ * Never throws: the caller decides what a failure means, and the error string
+ * is for logs only. It can contain the API key echoed back by Resend, so it
+ * must never reach a response body.
  */
-export async function sendEmail(
-  { apiKey, to, from, replyTo, subject, text }: SendEmailArgs,
-  fetchImpl: typeof fetch = fetch,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function sendEmail({
+  apiKey,
+  to,
+  from,
+  replyTo,
+  subject,
+  text,
+}: SendEmailArgs): Promise<{ ok: true } | { ok: false; error: string }> {
   let response: Response;
 
   try {
-    response = await fetchImpl(RESEND_ENDPOINT, {
+    response = await fetch(RESEND_ENDPOINT, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -36,7 +50,6 @@ export async function sendEmail(
   }
 
   if (!response.ok) {
-    // Body may be JSON or empty; either way it is only ever logged server-side.
     const detail = await response.text().catch(() => "");
     return {
       ok: false,
