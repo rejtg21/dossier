@@ -31,7 +31,19 @@ describe("sendEmail", () => {
     expect(createTransport).toHaveBeenCalledWith(
       expect.objectContaining({
         service: "gmail",
-        auth: { user: "site@gmail.com", pass: "abcd efgh ijkl mnop" },
+        auth: { user: "site@gmail.com", pass: "abcdefghijklmnop" },
+      }),
+    );
+  });
+
+  it("strips the spaces Google shows the password with", async () => {
+    // The displayed grouping is presentation only; pasting it verbatim is the
+    // usual cause of a 535.
+    await sendEmail({ ...args, appPassword: "  abcd efgh\tijkl mnop " });
+
+    expect(createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auth: expect.objectContaining({ pass: "abcdefghijklmnop" }),
       }),
     );
   });

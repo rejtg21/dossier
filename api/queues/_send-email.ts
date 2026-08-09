@@ -22,7 +22,10 @@ const getTransporter = (user: string, appPassword: string): Transporter => {
   transporter ??= nodemailer.createTransport({
     service: "gmail",
     pool: true,
-    auth: { user, pass: appPassword },
+    // Google shows the password as four groups of four for readability, but
+    // the secret is the 16 characters alone. Pasting it verbatim is the usual
+    // cause of a 535, and the value never legitimately contains whitespace.
+    auth: { user, pass: appPassword.replace(/\s/g, "") },
   });
 
   return transporter;
