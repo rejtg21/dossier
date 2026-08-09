@@ -36,10 +36,16 @@ describe("BulletList", () => {
   it("does not announce the marker as part of the item", () => {
     render(<BulletList items={["Code reviews"]} />);
 
-    // aria-hidden content is excluded from the accessible name.
-    expect(
-      screen.getByRole("listitem", { name: "Code reviews" }),
-    ).toBeInTheDocument();
+    const item = screen.getByRole("listitem");
+
+    // Strip aria-hidden nodes the way assistive tech does, then compare.
+    const announced = item.cloneNode(true) as HTMLElement;
+    announced
+      .querySelectorAll("[aria-hidden='true']")
+      .forEach((node) => node.remove());
+
+    expect(announced.textContent?.trim()).toBe("Code reviews");
+    expect(item.textContent).toContain("›");
   });
 
   it("uses the 15px size by default", () => {
