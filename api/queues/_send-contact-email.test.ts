@@ -1,14 +1,23 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { removeFailure, saveFailure } from "./_contacts-store";
 import { sendEmail } from "./_send-email";
 import { deliverContactEmail, retry } from "./send-contact-email";
 
 // handleCallback would try to configure a queue client at import time.
 vi.mock("@vercel/queue", () => ({ handleCallback: (fn: unknown) => fn }));
 vi.mock("./_send-email", () => ({ sendEmail: vi.fn() }));
+// The event bus and catch-contacts listener stay real, so these cases cover
+// the whole emit -> listener -> store path.
+vi.mock("./_contacts-store", () => ({
+  saveFailure: vi.fn(),
+  removeFailure: vi.fn(),
+}));
 
 const send = vi.mocked(sendEmail);
+const save = vi.mocked(saveFailure);
+const remove = vi.mocked(removeFailure);
 
 const message = {
   name: "Rej Mediodia",
@@ -74,26 +83,50 @@ describe("deliverContactEmail", () => {
     );
   });
 
-  it("logs the whole submission once it is about to be dropped", async () => {
-    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    send.mockResolvedValue({ ok: false, error: "still failing" });
-
-    await expect(deliverContactEmail(message, meta(11))).rejects.toThrow();
-
-    // With no dead-letter queue, this log is the only recovery path.
-    const output = logged.mock.calls.flat().join(" ");
-    expect(output).toContain("giving up");
-    expect(output).toContain("someone@example.com");
-    expect(output).toContain("I would like to talk about a project.");
-  });
-
-  it("does not log the submission on an ordinary retry", async () => {
-    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    send.mockResolvedValue({ ok: false, error: "transient" });
+  it("stores the submission when the send fails", async () => {
+    send.mockResolvedValue({ ok: false, error: "535 auth rejected" });
 
     await expect(deliverContactEmail(message, meta(2))).rejects.toThrow();
 
-    expect(logged.mock.calls.flat().join(" ")).not.toContain("giving up");
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0]).toMatchObject({
+      messageId: "msg_1",
+      attempts: 2,
+      submission: message,
+    });
+  });
+
+  it("stores the submission when the env is missing", async () => {
+    vi.stubEnv("GMAIL_USER", "");
+
+    await expect(deliverContactEmail(message, meta())).rejects.toThrow();
+
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("clears the record once a retry finally succeeds", async () => {
+    await deliverContactEmail(message, meta(3));
+
+    expect(remove).toHaveBeenCalledWith("msg_1");
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("still reports the send failure when storing fails", async () => {
+    send.mockResolvedValue({ ok: false, error: "535 auth rejected" });
+    save.mockRejectedValue(new Error("blob unavailable"));
+
+    // Storage problems must not change email semantics: the message still
+    // needs redelivering, so the send error is what propagates.
+    await expect(deliverContactEmail(message, meta())).rejects.toThrow(
+      /535 auth rejected/,
+    );
+  });
+
+  it("does not fail a successful send when clearing the record fails", async () => {
+    remove.mockRejectedValue(new Error("blob unavailable"));
+
+    // Rethrowing here would resend an email that already went out.
+    await expect(deliverContactEmail(message, meta())).resolves.toBeUndefined();
   });
 });
 

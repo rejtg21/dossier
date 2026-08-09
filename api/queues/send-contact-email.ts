@@ -1,4 +1,6 @@
 import { handleCallback } from "@vercel/queue";
+import { registerCatchContacts } from "./_catch-contacts";
+import { emit, type ContactSubmission, type EventName } from "./_events";
 import { sendEmail } from "./_send-email";
 
 /**
@@ -17,13 +19,11 @@ import { sendEmail } from "./_send-email";
  * Delivery is at-least-once, so this handler can run twice for one submission.
  * The consequence is a duplicate email in an inbox, which is the right trade
  * against silently dropping a message.
+ *
+ * What happens to a failure is not decided here — it emits `email-failed` and
+ * `catch-contacts` persists it. This module knows nothing about storage.
  */
-
-export interface ContactMessage {
-  name: string;
-  email: string;
-  message: string;
-}
+registerCatchContacts();
 
 interface RetryMetadata {
   deliveryCount: number;
@@ -32,9 +32,8 @@ interface RetryMetadata {
 
 /**
  * Vercel Queues has no dead-letter queue, so an unfixable message would retry
- * until it expires. After MAX_ATTEMPTS the message is acknowledged and logged
- * in full — those logs are the only recovery path, which is exactly why the
- * whole submission is written out rather than just an id.
+ * until it expires. After MAX_ATTEMPTS it is acknowledged — by then it is
+ * already recorded in `contacts.json`, which is what makes dropping it safe.
  */
 const MAX_ATTEMPTS = 10;
 
@@ -48,8 +47,24 @@ export const retry = (_error: unknown, metadata: RetryMetadata) => {
   return { afterSeconds: Math.min(300, 2 ** metadata.deliveryCount * 5) };
 };
 
+/**
+ * Storage problems must not change email semantics. A failed archive write is
+ * logged and swallowed: the send outcome already decides whether the message is
+ * redelivered, and on the failure path the next attempt archives again anyway.
+ */
+async function emitQuietly<E extends EventName>(
+  event: E,
+  payload: Parameters<typeof emit<E>>[1],
+): Promise<void> {
+  try {
+    await emit(event, payload);
+  } catch (cause) {
+    console.error(`[contact] listener for ${event} failed: ${String(cause)}`);
+  }
+}
+
 export async function deliverContactEmail(
-  message: ContactMessage,
+  message: ContactSubmission,
   metadata: RetryMetadata,
 ) {
   const { GMAIL_USER, GMAIL_APP_PASSWORD, CONTACT_TO_EMAIL } = process.env;
@@ -57,9 +72,17 @@ export async function deliverContactEmail(
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD || !CONTACT_TO_EMAIL) {
     // Worth retrying rather than dropping: the operator can set the variables
     // and redeploy, and the message survives up to seven days waiting for that.
-    throw new Error(
-      "[contact] missing env: GMAIL_USER, GMAIL_APP_PASSWORD and CONTACT_TO_EMAIL are all required",
-    );
+    const error =
+      "[contact] missing env: GMAIL_USER, GMAIL_APP_PASSWORD and CONTACT_TO_EMAIL are all required";
+
+    await emitQuietly("email-failed", {
+      messageId: metadata.messageId,
+      deliveryCount: metadata.deliveryCount,
+      error,
+      submission: message,
+    });
+
+    throw new Error(error);
   }
 
   const sent = await sendEmail({
@@ -72,10 +95,17 @@ export async function deliverContactEmail(
   });
 
   if (!sent.ok) {
+    await emitQuietly("email-failed", {
+      messageId: metadata.messageId,
+      deliveryCount: metadata.deliveryCount,
+      error: sent.error,
+      submission: message,
+    });
+
     if (metadata.deliveryCount > MAX_ATTEMPTS) {
       console.error(
-        `[contact] giving up after ${metadata.deliveryCount} attempts on ${metadata.messageId}. ` +
-          `Unsent submission: ${JSON.stringify(message)}`,
+        `[contact] giving up on ${metadata.messageId} after ${metadata.deliveryCount} attempts; ` +
+          `it is kept in contacts.json`,
       );
     }
 
@@ -83,6 +113,9 @@ export async function deliverContactEmail(
     // so it goes to logs only — nothing here reaches a visitor.
     throw new Error(sent.error);
   }
+
+  // Succeeded, possibly after earlier failures: clear any record of it.
+  await emitQuietly("email-sent", { messageId: metadata.messageId });
 }
 
 export const POST = handleCallback(deliverContactEmail, { retry });
