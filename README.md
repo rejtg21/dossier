@@ -25,6 +25,7 @@ Vitest · Playwright · Nodemailer.
 | `npm run build` | Static export to `out/`. |
 | `npm start` | Serves the built `out/` directory. Not `next start`, which does not work under `output: "export"`. |
 | `npm run lint` | ESLint. |
+| `npm run typecheck` | Generates Next's route types, then `tsc --noEmit`. The typegen step matters: `LayoutProps` and friends live in `.next`, so a bare `tsc` fails in a fresh checkout. |
 | `npm test` | Vitest once — unit and component tests. |
 | `npm run test:watch` | Vitest in watch mode. |
 | `npm run test:e2e` | Playwright. Builds and serves `out/` on :3100 automatically; no server needed beforehand. |
