@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { BulletList } from "@/components/bullet-list";
 import { Eyebrow } from "@/components/eyebrow";
 import { Pill } from "@/components/pill";
@@ -9,11 +8,13 @@ import {
   leadershipResponsibilities,
   leadershipRoles,
 } from "@/data/leadership";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Leadership",
   description: leadershipIntro,
-};
+  path: "/leadership",
+});
 
 export default function LeadershipPage() {
   return (

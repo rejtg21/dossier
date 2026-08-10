@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { contactEmailLabel } from "../../support/site";
+
 /**
  * The contact page is two columns at desktop and one at mobile.
  *
@@ -8,7 +10,7 @@ import { expect, test, type Page } from "@playwright/test";
  * indistinguishable from a stacked one.
  */
 const introLinks = (page: Page) =>
-  page.getByRole("link", { name: "rejtg21@gmail.com", exact: true });
+  page.getByRole("link", { name: contactEmailLabel, exact: true });
 
 const form = (page: Page) => page.getByRole("form", { name: /send a message/i });
 

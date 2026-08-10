@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { AccentChip } from "@/components/accent-chip";
 import { BulletList } from "@/components/bullet-list";
 import { Chip } from "@/components/chip";
@@ -12,11 +11,13 @@ import {
   fundamentalsLead,
   philosophyOpening,
 } from "@/data/philosophy";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Philosophy",
   description: philosophyOpening,
-};
+  path: "/philosophy",
+});
 
 export default function PhilosophyPage() {
   return (
