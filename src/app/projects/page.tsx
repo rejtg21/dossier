@@ -1,12 +1,13 @@
-import type { Metadata } from "next";
 import { ProjectCard } from "@/components/project-card";
 import { ScreenIntro } from "@/components/screen-intro";
 import { projects, projectsIntro } from "@/data/projects";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Projects",
   description: projectsIntro,
-};
+  path: "/projects",
+});
 
 export default function ProjectsPage() {
   return (

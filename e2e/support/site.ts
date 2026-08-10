@@ -8,19 +8,54 @@ import { expect, type Locator, type Page } from "@playwright/test";
  * The duplication is the assertion.
  */
 export const routes = [
-  { path: "/", label: "Home", heading: "Rej Mediodia" },
-  { path: "/expertise", label: "Expertise", heading: "Technical Expertise" },
+  {
+    path: "/",
+    label: "Home",
+    heading: "Rej Mediodia",
+    // The home page is the one that names the role instead of a section.
+    title: "Rej Mediodia — Software Architect & Lead Engineer",
+  },
+  {
+    path: "/expertise",
+    label: "Expertise",
+    heading: "Technical Expertise",
+    title: "Rej Mediodia - Expertise",
+  },
   {
     path: "/projects",
     label: "Projects",
     heading: "Notable Production Projects",
+    title: "Rej Mediodia - Projects",
   },
-  { path: "/leadership", label: "Leadership", heading: "Engineering Leadership" },
-  { path: "/philosophy", label: "Philosophy", heading: "Engineering Philosophy" },
-  // Straight ASCII apostrophe (U+0027), matching `contactHeading` in
-  // src/data/contact.ts. A typographic U+2019 here would not match.
-  { path: "/contact", label: "Contact", heading: "Let's talk" },
+  {
+    path: "/leadership",
+    label: "Leadership",
+    heading: "Engineering Leadership",
+    title: "Rej Mediodia - Leadership",
+  },
+  {
+    path: "/philosophy",
+    label: "Philosophy",
+    heading: "Engineering Philosophy",
+    title: "Rej Mediodia - Philosophy",
+  },
+  {
+    path: "/contact",
+    label: "Contact",
+    // Straight ASCII apostrophe (U+0027), matching `contactHeading` in
+    // src/data/contact.ts. A typographic U+2019 here would not match.
+    heading: "Let's talk",
+    title: "Rej Mediodia - Contact",
+  },
 ] as const;
+
+/**
+ * The production origin, written out for the same reason as the routes: the
+ * canonical and Open Graph URLs must point at the live site no matter which
+ * host the export is being served from, so deriving them from `baseURL` would
+ * assert nothing.
+ */
+export const productionOrigin = "https://resmediodia.space";
 
 export type Route = (typeof routes)[number];
 

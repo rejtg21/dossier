@@ -1,12 +1,13 @@
-import type { Metadata } from "next";
 import { ExpertiseCard } from "@/components/expertise-card";
 import { ScreenIntro } from "@/components/screen-intro";
 import { categories, expertiseIntro } from "@/data/expertise";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Expertise",
   description: expertiseIntro,
-};
+  path: "/expertise",
+});
 
 export default function ExpertisePage() {
   return (
