@@ -47,6 +47,12 @@ const existing = (entries: FailedContact[], etag = "etag-1") =>
 const written = (call = 0) => JSON.parse(write.mock.calls[call][1] as string);
 
 beforeEach(() => {
+  // Pinned unset so the ambient environment cannot decide what these tests
+  // see. vercel.json runs this suite inside the build, where Vercel injects
+  // the project's own variables — so without this, setting
+  // CONTACTS_BLOB_PATHNAME in production fails the build on a test that is
+  // not about production at all. Each case below states the value it needs.
+  vi.stubEnv("CONTACTS_BLOB_PATHNAME", undefined);
   read.mockResolvedValue(null);
   write.mockResolvedValue({} as never);
 });
@@ -57,7 +63,10 @@ afterEach(() => {
 });
 
 describe("contactsPathname", () => {
-  it("defaults to contacts.json", () => {
+  // The literal is the assertion: this is the default the module declares, so
+  // comparing it against process.env.CONTACTS_BLOB_PATHNAME would only restate
+  // the implementation and could never fail.
+  it("falls back to contacts.json when no override is set", () => {
     expect(contactsPathname()).toBe("contacts.json");
   });
 
@@ -84,11 +93,11 @@ describe("contactsPathname", () => {
 });
 
 describe("saveFailure", () => {
-  it("creates contacts.json when it does not exist yet", async () => {
+  it("creates the archive when it does not exist yet", async () => {
     await saveFailure(entry("msg_1"));
 
     const [pathname, , options] = write.mock.calls[0];
-    expect(pathname).toBe(contactsPathname());
+    expect(pathname).toBe("contacts.json");
     expect(options).toMatchObject({
       access: "private",
       addRandomSuffix: false,
