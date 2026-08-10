@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { contactLinkLabels } from "../../support/site";
+
 /**
  * Guards the second regression that shipped: the contact links broke mid-word
  * ("rejmediod" / "ia") because the mockup's own numbers did not fit — 27
@@ -14,12 +16,6 @@ const viewports = [
   { name: "1440px", viewport: { width: 1440, height: 900 } },
 ] as const;
 
-/** Literals on purpose, matching `support/site.ts`: the duplication is the assertion. */
-const contactLinks = [
-  { label: "rejtg21@gmail.com" },
-  { label: "linkedin.com/in/rejmediodia" },
-] as const;
-
 for (const { name, viewport } of viewports) {
   test.describe(`contact links at ${name}`, () => {
     test.use({ viewport });
@@ -28,7 +24,7 @@ for (const { name, viewport } of viewports) {
       await page.goto("/contact");
     });
 
-    for (const { label } of contactLinks) {
+    for (const label of contactLinkLabels) {
       test(`"${label}" renders on a single unbroken line`, async ({ page }) => {
         const link = page.getByRole("link", { name: label, exact: true });
         await expect(link).toBeVisible();
@@ -56,7 +52,7 @@ for (const { name, viewport } of viewports) {
     test("both links share the same width", async ({ page }) => {
       const widths: number[] = [];
 
-      for (const { label } of contactLinks) {
+      for (const label of contactLinkLabels) {
         const box = await page
           .getByRole("link", { name: label, exact: true })
           .boundingBox();

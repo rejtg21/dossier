@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+import { contactLinks } from "@/data/contact";
+
 /**
  * The expected shape of the site, written out as literals on purpose.
  *
@@ -56,6 +58,24 @@ export const routes = [
  * assert nothing.
  */
 export const productionOrigin = "https://resmediodia.space";
+
+/**
+ * Read from the app data, unlike `routes` above — deliberately the opposite
+ * call.
+ *
+ * A route's path and heading are the contract: renaming one is a change worth
+ * failing over. A contact address is not. The specs that use these labels
+ * assert *layout* — that a label fits its box on one line, which column it
+ * lands in — and that is true of whatever address is configured. Pinning the
+ * string here only means the suite goes red when the address changes rather
+ * than when the layout breaks.
+ */
+export const contactLinkLabels = contactLinks.map((link) => link.label);
+
+/** The email link specifically, which is the longest and so the one that wraps first. */
+export const contactEmailLabel = contactLinks.find((link) =>
+  link.href.startsWith("mailto:"),
+)!.label;
 
 export type Route = (typeof routes)[number];
 
